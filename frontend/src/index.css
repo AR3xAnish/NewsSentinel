@@ -1,0 +1,63 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-[#f8fafc] text-slate-800 antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  h1, h2, h3, .font-editorial {
+    font-family: 'Merriweather', Georgia, serif;
+  }
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Verification Status Badges */
+.badge-corroborated {
+  @apply bg-emerald-50 text-emerald-800 border border-emerald-200;
+}
+.badge-partially-corroborated {
+  @apply bg-amber-50 text-amber-800 border border-amber-200;
+}
+.badge-conflicting {
+  @apply bg-rose-50 text-rose-800 border border-rose-200;
+}
+.badge-unverified {
+  @apply bg-slate-100 text-slate-700 border border-slate-200;
+}
+.badge-insufficient-evidence {
+  @apply bg-purple-50 text-purple-800 border border-purple-200;
+}
+
+/* Micro animations */
+.fade-in {
+  animation: fadeIn 0.25s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
