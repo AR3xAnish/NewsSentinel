@@ -107,5 +107,10 @@ export const api = {
     method: 'POST',
     body: JSON.stringify({ story_id: storyId, custom_note: customNote }),
   }),
+  previewDailyDigest: (maxStories = 5) => fetchJson(`/telegram/daily-digest/preview?max_stories=${maxStories}`),
+  sendDailyDigest: (options = {}) => fetchJson('/telegram/daily-digest', {
+    method: 'POST',
+    body: JSON.stringify(options),
+  }),
   getDeliveries: () => fetchJson('/deliveries'),
 };

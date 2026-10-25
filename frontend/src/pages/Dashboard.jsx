@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   FileText,
   Layers,
@@ -11,10 +11,13 @@ import {
   Cpu,
   RefreshCw,
   Share2,
-  Newspaper
+  Newspaper,
+  Send,
+  Calendar
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import StatusBadge from '../components/StatusBadge';
+import { api } from '../services/api';
 
 export default function Dashboard({
   stats,
@@ -26,6 +29,26 @@ export default function Dashboard({
   isCollecting,
   refreshDashboard
 }) {
+  const [sendingDailyDigest, setSendingDailyDigest] = useState(false);
+  const [dailyDigestNotice, setDailyDigestNotice] = useState(null);
+
+  const handleDispatchDailyDigest = async () => {
+    setSendingDailyDigest(true);
+    try {
+      const res = await api.sendDailyDigest({ force_collect: true, max_stories: 5 });
+      if (res.success) {
+        setDailyDigestNotice(`Daily News Brief sent to Telegram! (${res.stories_count || 0} stories)`);
+      } else {
+        setDailyDigestNotice(`Dispatch error: ${res.error}`);
+      }
+    } catch (err) {
+      setDailyDigestNotice(`Dispatch error: ${err.message}`);
+    } finally {
+      setSendingDailyDigest(false);
+      setTimeout(() => setDailyDigestNotice(null), 5000);
+    }
+  };
+
   const chartData = [
     { name: 'Corroborated', value: stats?.corroborated_stories || 0, color: '#10b981' },
     { name: 'Partially Corroborated', value: stats?.partially_corroborated_stories || 0, color: '#f59e0b' },
@@ -56,7 +79,16 @@ export default function Dashboard({
             Real-time multi-source AI news monitoring, cross-verification, and automated social publishing.
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            onClick={handleDispatchDailyDigest}
+            disabled={sendingDailyDigest}
+            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg shadow-sm transition-all"
+            title="Dispatch today's curated news digest to Telegram"
+          >
+            <Send className="w-3.5 h-3.5 text-emerald-600" />
+            <span>{sendingDailyDigest ? 'Dispatching...' : 'Send Daily News'}</span>
+          </button>
           <button
             onClick={refreshDashboard}
             className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
@@ -73,6 +105,22 @@ export default function Dashboard({
           </button>
         </div>
       </div>
+
+      {/* Daily Digest Notice Banner */}
+      {dailyDigestNotice && (
+        <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs rounded-xl flex items-center justify-between shadow-sm">
+          <div className="flex items-center gap-2">
+            <Send className="w-4 h-4 text-emerald-600" />
+            <span className="font-medium">{dailyDigestNotice}</span>
+          </div>
+          <button
+            onClick={() => setDailyDigestNotice(null)}
+            className="text-slate-400 hover:text-slate-600 font-bold px-2"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Ollama Local Engine Status Banner if offline or unconfigured */}
       {!ollamaHealth?.connected && (

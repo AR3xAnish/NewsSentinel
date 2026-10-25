@@ -217,6 +217,11 @@ class TelegramSendRequest(BaseModel):
     story_id: int
     custom_note: Optional[str] = None
 
+class TelegramDailyDigestRequest(BaseModel):
+    force_collect: bool = True
+    max_stories: int = 5
+    custom_note: Optional[str] = None
+
 class NotificationDeliveryResponse(BaseModel):
     id: int
     story_id: Optional[int] = None

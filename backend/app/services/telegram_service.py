@@ -1,8 +1,8 @@
 import html
 import os
 import httpx
-from datetime import datetime, timezone
-from typing import Optional, Dict, Any
+from datetime import datetime, timezone, timedelta
+from typing import Optional, Dict, Any, List
 from sqlalchemy.orm import Session
 from app.models.models import Story, NotificationDelivery
 from app.config import get_settings
@@ -145,6 +145,121 @@ class TelegramService:
 
         full_message = "\n".join(lines)
         return await self._dispatch_message(db=db, story_id=story.id, text=full_message, parse_mode="HTML")
+
+    def format_daily_digest(self, db: Session, max_stories: int = 5) -> Dict[str, Any]:
+        """
+        Gathers top verified news stories and formats an executive Daily AI News Intelligence Digest in Telegram HTML format.
+        """
+        now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(hours=24)
+
+        # 1. Fetch corroborated / verified stories from last 24h
+        stories = db.query(Story).filter(
+            Story.created_at >= cutoff,
+            Story.verification_status.in_(["CORROBORATED", "PARTIALLY_CORROBORATED"])
+        ).order_by(Story.confidence_score.desc(), Story.created_at.desc()).limit(max_stories).all()
+
+        # 2. If fewer than 2 stories found from last 24h, expand to all corroborated stories
+        if len(stories) < 2:
+            stories = db.query(Story).filter(
+                Story.verification_status.in_(["CORROBORATED", "PARTIALLY_CORROBORATED"])
+            ).order_by(Story.confidence_score.desc(), Story.created_at.desc()).limit(max_stories).all()
+
+        # 3. If still empty, grab latest stories regardless of status
+        if not stories:
+            stories = db.query(Story).order_by(Story.created_at.desc()).limit(max_stories).all()
+
+        date_str = now.strftime("%A, %B %d, %Y")
+        lines = [
+            "🗞️ <b>DAILY AI NEWS INTELLIGENCE DIGEST</b>",
+            f"📅 <i>{date_str}</i>",
+            "",
+            "Good morning! Here is today's curated executive briefing of AI & tech developments, cross-checked and verified across independent sources:",
+            ""
+        ]
+
+        status_emoji = {
+            "CORROBORATED": "✅",
+            "PARTIALLY_CORROBORATED": "🟡",
+            "CONFLICTING": "⚠️",
+            "UNVERIFIED": "❓",
+            "INSUFFICIENT_EVIDENCE": "🔍",
+        }
+
+        number_emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+
+        if not stories:
+            lines.append("ℹ️ <i>No new news stories recorded today. Automated feed collection has been queued.</i>")
+        else:
+            for idx, s in enumerate(stories):
+                num_icon = number_emojis[idx] if idx < len(number_emojis) else f"#{idx+1}"
+                safe_headline = html.escape(s.headline or "News Story")
+                emoji = status_emoji.get(s.verification_status, "📌")
+                conf_pct = int((s.confidence_score or 0.0) * 100)
+
+                primary_sa = next((sa for sa in s.articles if sa.is_primary and sa.article), None)
+                if not primary_sa and s.articles:
+                    primary_sa = s.articles[0]
+
+                publisher = html.escape(primary_sa.article.publisher if primary_sa and primary_sa.article else "Source")
+                url = html.escape(primary_sa.article.canonical_url if primary_sa and primary_sa.article else "")
+
+                summary_text = s.summary_factual or s.what_happened or ""
+                if len(summary_text) > 175:
+                    summary_text = summary_text[:172] + "..."
+                safe_summary = html.escape(summary_text)
+
+                lines.append(f"{num_icon} <b>{safe_headline}</b>")
+                lines.append(f"   {emoji} <b>{s.verification_status}</b> ({conf_pct}% confidence) • {s.independent_source_count} publisher(s)")
+                if safe_summary:
+                    lines.append(f"   <i>{safe_summary}</i>")
+                if url:
+                    lines.append(f"   🔗 Source: <a href=\"{url}\">{publisher}</a>")
+                lines.append("")
+
+        lines.extend([
+            "🔎 <i>Verified by YGF Local AI News Intelligence Agent (Local Ollama Engine)</i>"
+        ])
+
+        full_message = "\n".join(lines)
+        return {
+            "message": full_message,
+            "stories_count": len(stories),
+            "story_ids": [s.id for s in stories],
+            "date": date_str
+        }
+
+    async def send_daily_digest(
+        self,
+        db: Session,
+        max_stories: int = 5,
+        custom_note: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Dispatches today's consolidated Daily AI News Intelligence Digest to Telegram.
+        """
+        if not self.is_configured():
+            return {
+                "success": False,
+                "error": "Telegram integration is not configured. Please set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID."
+            }
+
+        digest_data = self.format_daily_digest(db, max_stories=max_stories)
+        message = digest_data["message"]
+
+        if custom_note:
+            message += f"\n\n💬 <b>Note</b>: {html.escape(custom_note)}"
+
+        res = await self._dispatch_message(
+            db=db,
+            story_id=digest_data["story_ids"][0] if digest_data["story_ids"] else None,
+            text=message,
+            parse_mode="HTML"
+        )
+        res["stories_count"] = digest_data["stories_count"]
+        res["story_ids"] = digest_data["story_ids"]
+        res["date"] = digest_data["date"]
+        return res
 
     async def _dispatch_message(
         self,

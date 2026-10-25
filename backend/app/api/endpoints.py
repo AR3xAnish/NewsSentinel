@@ -16,7 +16,7 @@ from app.schemas.schemas import (
     ClaimResponse, EvidenceResponse, SocialPostResponse, SocialPostUpdate,
     SocialPostGenerateRequest, CollectionRunResponse, CollectionTriggerRequest,
     SettingResponse, SettingUpdate, TelegramTestRequest, TelegramSendRequest,
-    NotificationDeliveryResponse, StoryArticleResponse
+    TelegramDailyDigestRequest, NotificationDeliveryResponse, StoryArticleResponse
 )
 from app.services.ollama_service import ollama_service
 from app.services.rss_service import rss_service
@@ -389,11 +389,19 @@ def get_app_settings(db: Session = Depends(get_db)):
         "temperature": settings.OLLAMA_TEMPERATURE,
     }
     telegram_info = telegram_service.get_configuration_status()
+    schedule_stat = scheduler_service.get_schedule_status()
     scheduler_info = {
         "enabled": scheduler_service.scheduler.running and scheduler_service.is_enabled,
         "interval_minutes": scheduler_service.interval_minutes,
         "lookback_hours": settings.COLLECTION_LOOKBACK_HOURS,
         "max_articles_per_feed": settings.MAX_ARTICLES_PER_FEED,
+        "next_collection_run": schedule_stat.get("next_collection_run"),
+    }
+    daily_digest_info = {
+        "enabled": scheduler_service.daily_digest_enabled,
+        "time": scheduler_service.daily_digest_time,
+        "max_stories": scheduler_service.daily_digest_max_stories,
+        "next_run": schedule_stat.get("next_daily_digest_run"),
     }
 
     # Stored dynamic settings from DB
@@ -403,6 +411,7 @@ def get_app_settings(db: Session = Depends(get_db)):
         "ollama": ollama_info,
         "telegram": telegram_info,
         "scheduler": scheduler_info,
+        "daily_digest": daily_digest_info,
         "custom": db_settings,
     }
 
@@ -416,7 +425,7 @@ def update_app_setting(update: SettingUpdate, key: str = Query(...), db: Session
         setting = ApplicationSetting(key=key, value=update.value)
         db.add(setting)
 
-    # Dynamic updates to in-memory settings
+    # Dynamic updates to in-memory settings & schedulers
     if key == "OLLAMA_MODEL":
         settings.OLLAMA_MODEL = update.value
         ollama_service.model = update.value
@@ -424,6 +433,16 @@ def update_app_setting(update: SettingUpdate, key: str = Query(...), db: Session
         try:
             val = int(update.value)
             scheduler_service.schedule_job(val)
+        except ValueError:
+            pass
+    elif key == "DAILY_DIGEST_ENABLED":
+        is_en = update.value.lower() in ("true", "1", "yes")
+        scheduler_service.schedule_daily_digest_job(scheduler_service.daily_digest_time, enabled=is_en)
+    elif key == "DAILY_DIGEST_TIME":
+        scheduler_service.schedule_daily_digest_job(update.value, enabled=scheduler_service.daily_digest_enabled)
+    elif key == "DAILY_DIGEST_MAX_STORIES":
+        try:
+            scheduler_service.daily_digest_max_stories = int(update.value)
         except ValueError:
             pass
 
@@ -443,6 +462,34 @@ async def send_story_telegram(req: TelegramSendRequest, db: Session = Depends(ge
         raise HTTPException(status_code=404, detail="Story not found")
 
     res = await telegram_service.send_story_summary(db=db, story=story, custom_note=req.custom_note)
+    return res
+
+@router.get("/telegram/daily-digest/preview", tags=["Telegram"])
+def preview_daily_digest(max_stories: int = 5, db: Session = Depends(get_db)):
+    """Previews the formatted Daily AI News Intelligence Digest message without sending it."""
+    return telegram_service.format_daily_digest(db=db, max_stories=max_stories)
+
+@router.post("/telegram/daily-digest", tags=["Telegram"])
+async def send_daily_digest_now(
+    req: Optional[TelegramDailyDigestRequest] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Triggers immediate delivery of today's Daily AI News Intelligence Digest to Telegram.
+    Optionally triggers a fresh collection run beforehand to ensure breaking news is captured.
+    """
+    force_collect = req.force_collect if req else True
+    max_stories = req.max_stories if req else scheduler_service.daily_digest_max_stories
+    custom_note = req.custom_note if req else None
+
+    if force_collect:
+        await scheduler_service.execute_collection_pipeline(run_type="daily_manual")
+
+    res = await telegram_service.send_daily_digest(
+        db=db,
+        max_stories=max_stories,
+        custom_note=custom_note
+    )
     return res
 
 @router.get("/deliveries", response_model=List[NotificationDeliveryResponse], tags=["Telegram"])

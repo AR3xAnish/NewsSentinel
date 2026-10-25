@@ -48,11 +48,13 @@ An autonomous, locally running AI news intelligence engine designed for the **YG
 6. **Notification Delivery (Telegram)**
    - Backend-only credentials with safe message length chunking and formatting.
    - Duplicate delivery prevention (10-minute cooldown per story/chat).
-   - Built-in test message dispatch and graceful disabled state when unconfigured.
+   - Automated Daily AI News Intelligence Digest dispatch (customizable 24-hour delivery schedule).
+   - Built-in test message dispatch, live preview, and graceful disabled state when unconfigured.
 
 7. **Automation & In-Process Scheduling**
-   - Background automation powered by APScheduler.
+   - Background automation powered by APScheduler (interval sweeps + daily cron dispatch).
    - Single-instance mutex lock preventing overlapping collection runs.
+   - Dynamic schedule configuration and next run time monitoring from the Settings UI.
    - Full diagnostic run history and error logging.
 
 ---
@@ -64,8 +66,8 @@ An autonomous, locally running AI news intelligence engine designed for the **YG
 | **Frontend** | React 18, Vite 5, JavaScript, Tailwind CSS v3, Lucide React icons, Recharts |
 | **Backend** | Python 3.14+, FastAPI, Pydantic v2, SQLAlchemy 2, SQLite (WAL mode), httpx, feedparser, BeautifulSoup4, APScheduler |
 | **Local AI** | Ollama HTTP API (`http://localhost:11434`), structured JSON format |
-| **Messaging** | Telegram Bot API (HTTP via httpx) |
-| **Testing** | pytest, pytest-asyncio, FastAPI TestClient (33 automated test cases) |
+| **Messaging** | Telegram Bot API (HTTP via httpx, safe HTML parse mode) |
+| **Testing** | pytest, pytest-asyncio, FastAPI TestClient (38 automated test cases) |
 
 ---
 

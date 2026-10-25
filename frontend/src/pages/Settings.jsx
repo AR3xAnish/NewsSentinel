@@ -8,7 +8,12 @@ import {
   AlertTriangle,
   RefreshCw,
   Sliders,
-  ExternalLink
+  ExternalLink,
+  Calendar,
+  Newspaper,
+  Bell,
+  Eye,
+  Check
 } from 'lucide-react';
 import { api } from '../services/api';
 
@@ -23,6 +28,13 @@ export default function Settings({ ollamaHealth, refreshOllamaHealth }) {
   const [testMessage, setTestMessage] = useState('Hello from YGF News Intelligence Agent!');
   const [sendingTest, setSendingTest] = useState(false);
 
+  // Daily News Digest states
+  const [dailyDigestEnabled, setDailyDigestEnabled] = useState(true);
+  const [dailyDigestTime, setDailyDigestTime] = useState('09:00');
+  const [sendingDailyDigest, setSendingDailyDigest] = useState(false);
+  const [dailyDigestPreview, setDailyDigestPreview] = useState(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+
   const fetchSettings = async () => {
     setLoading(true);
     try {
@@ -33,6 +45,12 @@ export default function Settings({ ollamaHealth, refreshOllamaHealth }) {
       }
       if (data?.scheduler?.interval_minutes) {
         setSchedulerInterval(String(data.scheduler.interval_minutes));
+      }
+      if (data?.daily_digest) {
+        setDailyDigestEnabled(Boolean(data.daily_digest.enabled));
+        if (data.daily_digest.time) {
+          setDailyDigestTime(data.daily_digest.time);
+        }
       }
     } catch (err) {
       console.error(err);
@@ -82,6 +100,60 @@ export default function Settings({ ollamaHealth, refreshOllamaHealth }) {
     } finally {
       setSendingTest(false);
       setTimeout(() => setNotice(null), 5000);
+    }
+  };
+
+  const handleToggleDailyDigest = async (newVal) => {
+    setDailyDigestEnabled(newVal);
+    try {
+      await api.updateSetting('DAILY_DIGEST_ENABLED', newVal ? 'true' : 'false');
+      setNotice(`Daily automated news dispatch ${newVal ? 'enabled' : 'disabled'}`);
+      fetchSettings();
+    } catch (err) {
+      setNotice(`Failed to update daily dispatch toggle: ${err.message}`);
+    } finally {
+      setTimeout(() => setNotice(null), 4000);
+    }
+  };
+
+  const handleSaveDailyTime = async () => {
+    try {
+      await api.updateSetting('DAILY_DIGEST_TIME', dailyDigestTime.trim());
+      setNotice(`Daily dispatch time updated to ${dailyDigestTime}`);
+      fetchSettings();
+    } catch (err) {
+      setNotice(`Failed to update dispatch time: ${err.message}`);
+    } finally {
+      setTimeout(() => setNotice(null), 4000);
+    }
+  };
+
+  const handleSendDailyDigestNow = async () => {
+    setSendingDailyDigest(true);
+    try {
+      const res = await api.sendDailyDigest({ force_collect: true, max_stories: 5 });
+      if (res.success) {
+        setNotice(`Daily News Digest dispatched to Telegram! (${res.stories_count || 0} stories included)`);
+      } else {
+        setNotice(`Dispatch error: ${res.error}`);
+      }
+    } catch (err) {
+      setNotice(`Error sending daily digest: ${err.message}`);
+    } finally {
+      setSendingDailyDigest(false);
+      setTimeout(() => setNotice(null), 6000);
+    }
+  };
+
+  const handleLoadPreview = async () => {
+    setLoadingPreview(true);
+    try {
+      const res = await api.previewDailyDigest(5);
+      setDailyDigestPreview(res.message);
+    } catch (err) {
+      setNotice(`Preview error: ${err.message}`);
+    } finally {
+      setLoadingPreview(false);
     }
   };
 
@@ -291,6 +363,165 @@ export default function Settings({ ollamaHealth, refreshOllamaHealth }) {
             </p>
           )}
         </div>
+      </div>
+
+      {/* Daily News Intelligence Digest (Telegram) */}
+      <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 bg-emerald-50 rounded-lg text-emerald-600">
+              <Calendar className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold uppercase tracking-wider text-slate-900 flex items-center gap-2">
+                <span>Daily AI News Intelligence Digest</span>
+                <span className="text-[10px] font-normal px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                  Telegram Delivery
+                </span>
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Automatically scans RSS feeds, verifies top claims, and dispatches a curated news briefing once a day
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span
+              className={`text-xs px-3 py-1 rounded-full font-semibold border ${
+                dailyDigestEnabled && settingsData?.telegram?.configured
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  : 'bg-slate-100 text-slate-600 border-slate-200'
+              }`}
+            >
+              {dailyDigestEnabled && settingsData?.telegram?.configured ? 'Active (Scheduled)' : 'Inactive / Paused'}
+            </span>
+          </div>
+        </div>
+
+        {/* Schedule & Timing Configuration */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-3 border-t border-slate-100 text-xs">
+          <div className="space-y-3">
+            <div>
+              <label className="font-semibold text-slate-700 block mb-1">
+                Automated Daily Dispatch Toggle
+              </label>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => handleToggleDailyDigest(!dailyDigestEnabled)}
+                  className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    dailyDigestEnabled ? 'bg-emerald-600' : 'bg-slate-300'
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      dailyDigestEnabled ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+                <span className="text-slate-600 font-medium">
+                  {dailyDigestEnabled ? 'Daily automated sending is ON' : 'Daily automated sending is PAUSED'}
+                </span>
+              </div>
+            </div>
+
+            <div>
+              <label className="font-semibold text-slate-700 block mb-1">
+                Daily Delivery Time (24-Hour Format HH:MM)
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={dailyDigestTime}
+                  onChange={(e) => setDailyDigestTime(e.target.value)}
+                  placeholder="09:00"
+                  className="w-32 p-2 border border-slate-300 rounded-lg text-xs font-mono bg-slate-50 text-center font-bold"
+                />
+                <button
+                  onClick={handleSaveDailyTime}
+                  className="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-semibold"
+                >
+                  Save Schedule
+                </button>
+              </div>
+              <p className="text-[10px] text-slate-400 mt-1">
+                E.g. <code className="bg-slate-100 px-1 py-0.5 rounded font-mono">09:00</code> for morning executive brief, or <code className="bg-slate-100 px-1 py-0.5 rounded font-mono">18:30</code> for evening roundup.
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-3 bg-slate-50 p-3.5 rounded-lg border border-slate-200">
+            <div className="flex items-center gap-1.5 text-slate-700 font-semibold">
+              <Clock className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Next Scheduled Daily Run:</span>
+            </div>
+            <div className="font-mono text-xs text-slate-800 font-bold bg-white p-2.5 rounded border border-slate-200">
+              {settingsData?.daily_digest?.next_run
+                ? new Date(settingsData.daily_digest.next_run).toLocaleString(undefined, {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    timeZoneName: 'short'
+                  })
+                : dailyDigestEnabled
+                ? `Every day at ${dailyDigestTime}`
+                : 'Paused'}
+            </div>
+            <p className="text-[11px] text-slate-500 leading-relaxed">
+              When triggered, the agent pulls active RSS feeds, cross-validates claims, builds an executive briefing, and posts it to Telegram chat <code className="font-mono text-slate-700">{settingsData?.telegram?.chat_id || 'ID'}</code>.
+            </p>
+          </div>
+        </div>
+
+        {/* Action Buttons: Send Now & Preview */}
+        <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleSendDailyDigestNow}
+              disabled={sendingDailyDigest || !settingsData?.telegram?.configured}
+              className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold rounded-lg shadow-sm transition-all"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>{sendingDailyDigest ? 'Collecting & Dispatching...' : "Send Today's News Digest Now"}</span>
+            </button>
+
+            <button
+              onClick={handleLoadPreview}
+              disabled={loadingPreview}
+              className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-lg transition-colors"
+            >
+              <Eye className="w-3.5 h-3.5" />
+              <span>{loadingPreview ? 'Loading...' : 'Preview Daily Digest'}</span>
+            </button>
+          </div>
+
+          {!settingsData?.telegram?.configured && (
+            <span className="text-[11px] text-amber-600 font-medium">
+              ⚠️ Configure Telegram credentials above to enable daily dispatch.
+            </span>
+          )}
+        </div>
+
+        {/* Digest Preview Box */}
+        {dailyDigestPreview && (
+          <div className="p-4 bg-slate-900 text-slate-100 rounded-lg text-xs font-mono space-y-2 border border-slate-800">
+            <div className="flex items-center justify-between text-slate-400 pb-2 border-b border-slate-800">
+              <span className="font-bold text-slate-300">Telegram Daily Digest Preview</span>
+              <button
+                onClick={() => setDailyDigestPreview(null)}
+                className="text-slate-400 hover:text-slate-200 text-xs"
+              >
+                ✕ Close Preview
+              </button>
+            </div>
+            <div
+              className="whitespace-pre-wrap leading-relaxed text-[11px] text-slate-200"
+              dangerouslySetInnerHTML={{ __html: dailyDigestPreview }}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

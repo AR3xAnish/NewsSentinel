@@ -25,12 +25,15 @@ class Settings(BaseSettings):
     USER_AGENT: str = "YGFNewsIntelligence/1.0 (+https://ygf-ngo.org; evaluation bot)"
 
     # Scheduler
-    SCHEDULER_ENABLED: bool = False
+    SCHEDULER_ENABLED: bool = True
     SCHEDULER_INTERVAL_MINUTES: int = 60
 
     # Telegram Delivery
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_CHAT_ID: str = ""
+    DAILY_DIGEST_ENABLED: bool = True
+    DAILY_DIGEST_TIME: str = "09:00"  # 24-hour HH:MM format for daily scheduled delivery
+    DAILY_DIGEST_MAX_STORIES: int = 5
 
     class Config:
         env_file = ".env"
